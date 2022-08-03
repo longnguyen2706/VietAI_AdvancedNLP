@@ -14,6 +14,8 @@ from datasets import load_metric
 import torch
 from datasets import load_dataset
 
+from datasets import Dataset
+
 cache_dir = './cache'
 model_name = 'nguyenvulebinh/envibert'
 def download_tokenizer_files():
@@ -65,14 +67,29 @@ def get_dataset():
     dataset = dataset.rename_column("tgt", "labels")
     return dataset
 
-def map_column(data):
-    data['input_ids'] = data['src']
-    data['labels'] = data['tgt']
-    del data['src']
-    del data['tgt']
+# def map_column(data):
+#     data['input_ids'] = data['src']
+#     data['labels'] = data['tgt']
+#     del data['src']
+#     del data['tgt']
+
+def flatten(data):
+    inputs = []
+    labels = []
+    for row in data:
+        inputs+= row['input_ids']
+        labels+= row['labels']
+    # print (len(inputs))
+    # print (len(labels))
+    return {'input_ids': inputs, 'labels': labels}
+
+def flatten2(data):
+    input_ids = list(np.concatenate(data['input_ids']))
+    labels =  list(np.concatenate(data['labels']))
+    return {'input_ids': input_ids, 'labels': labels}
 
 def get_metric_compute_fn(tokenizer):
-    metric = load_metric('wer')
+    metric = load_metric('sacrebleu')
 
     def compute_metrics(eval_preds):
         preds, labels = eval_preds
@@ -171,6 +188,21 @@ model, tokenizer = init_model()
 data = get_dataset()
 print (data)
 
+# flatten_data = data
+# flatten_data['train'] = data['train'].flatten()
+# print (flatten_data)
+# train_set = Dataflatten(data['train'])
+
+# train_dict = {'input_ids': [], 'labels': []}
+# for i in range (0, 500000//2500):
+#     dict = flatten2(data['train'][i:(i+1)*2500])
+#     train_dict['input_ids'] += dict['input_ids']
+#     train_dict['labels'] += dict['labels']
+                    
+train_set = Dataset.from_dict(flatten2(data['train'][0:2500]))
+val_set = Dataset.from_dict(flatten(data['valid']))
+print(train_set, val_set)
+
 # # Metrics
 # wer = load_metric('wer')
 # predictions = [' '.join(item) for item in data['valid']['src']]
@@ -213,8 +245,8 @@ trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
     compute_metrics=get_metric_compute_fn(tokenizer),
-    train_dataset=data['train'].shard(200, 0) ,  # Only use subset of the dataset for a quick training. Remove shard for full training
-    eval_dataset=data['valid'].shard(100, 0), # Only use subset of the dataset for a quick training. Remove shard for full training
+    train_dataset=train_set.shard(200, 0) ,  # Only use subset of the dataset for a quick training. Remove shard for full training
+    eval_dataset=val_set.shard(100, 0), # Only use subset of the dataset for a quick training. Remove shard for full training
     tokenizer=tokenizer,
     data_collator=data_collator
 )
