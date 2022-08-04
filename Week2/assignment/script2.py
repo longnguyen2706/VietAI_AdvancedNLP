@@ -213,7 +213,7 @@ print(train_set, val_set)
 
 
 data_collator = DataCollatorForEnViMT(tokenizer, model=model)
-num_epochs = 10
+num_epochs = 1
 checkpoint_path = "./envi_checkpoints"
 batch_size = 16  # change to 16 for full training
 training_args = Seq2SeqTrainingArguments(
@@ -235,7 +235,7 @@ training_args = Seq2SeqTrainingArguments(
     metric_for_best_model='bleu',
     greater_is_better=True,
     eval_accumulation_steps=10,
-    dataloader_num_workers=20
+    dataloader_num_workers=12
     # sharded_ddp="simple",
     # fp16=True,
 )
@@ -245,8 +245,8 @@ trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
     compute_metrics=get_metric_compute_fn(tokenizer),
-    train_dataset=train_set.shard(200, 0) ,  # Only use subset of the dataset for a quick training. Remove shard for full training
-    eval_dataset=val_set.shard(100, 0), # Only use subset of the dataset for a quick training. Remove shard for full training
+    train_dataset=train_set ,  # Only use subset of the dataset for a quick training. Remove shard for full training
+    eval_dataset=val_set, # Only use subset of the dataset for a quick training. Remove shard for full training
     tokenizer=tokenizer,
     data_collator=data_collator
 )
