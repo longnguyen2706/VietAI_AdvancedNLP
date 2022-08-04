@@ -60,33 +60,18 @@ def init_model():
 
 def get_dataset():
     dataset = load_dataset('VietAI/spoken_norm_assignment')
-    # map_column(dataset['train'])
-    # map_column(dataset['test'])
-    # map_column(dataset['valid'])
     dataset = dataset.rename_column("src", "input_ids")
     dataset = dataset.rename_column("tgt", "labels")
     return dataset
 
-# def map_column(data):
-#     data['input_ids'] = data['src']
-#     data['labels'] = data['tgt']
-#     del data['src']
-#     del data['tgt']
-
 def flatten(data):
-    inputs = []
-    labels = []
-    for row in data:
-        inputs+= row['input_ids']
-        labels+= row['labels']
-    # print (len(inputs))
-    # print (len(labels))
-    return {'input_ids': inputs, 'labels': labels}
-
-def flatten2(data):
     input_ids = list(np.concatenate(data['input_ids']))
     labels =  list(np.concatenate(data['labels']))
     return {'input_ids': input_ids, 'labels': labels}
+
+def flatten_list(batch):
+    return {"input_ids": [item for rows in batch["input_ids"] for item in rows],
+            "labels": [item for rows in batch["labels"] for item in rows]}
 
 def get_metric_compute_fn(tokenizer):
     metric = load_metric('sacrebleu')
@@ -187,20 +172,12 @@ model, tokenizer = init_model()
 
 data = get_dataset()
 print (data)
-
-# flatten_data = data
-# flatten_data['train'] = data['train'].flatten()
-# print (flatten_data)
-# train_set = Dataflatten(data['train'])
-
-# train_dict = {'input_ids': [], 'labels': []}
-# for i in range (0, 500000//2500):
-#     dict = flatten2(data['train'][i:(i+1)*2500])
-#     train_dict['input_ids'] += dict['input_ids']
-#     train_dict['labels'] += dict['labels']
                     
-train_set = Dataset.from_dict(flatten2(data['train'][0:2500]))
-val_set = Dataset.from_dict(flatten(data['valid']))
+# train_set = Dataset.from_dict(flatten(data['train'][0:500000]))
+# val_set = Dataset.from_dict(flatten(data['valid'][0:2500]))
+
+train_set = data['train'].split.map(flatten_list, batched=True)
+val_set = data['valid'].map(flatten_list, batched=True)
 print(train_set, val_set)
 
 # # Metrics
@@ -215,7 +192,7 @@ print(train_set, val_set)
 data_collator = DataCollatorForEnViMT(tokenizer, model=model)
 num_epochs = 1
 checkpoint_path = "./envi_checkpoints"
-batch_size = 16  # change to 16 for full training
+batch_size = 32  # change to 16 for full training
 training_args = Seq2SeqTrainingArguments(
     output_dir=checkpoint_path,
     per_device_train_batch_size=batch_size,
@@ -224,10 +201,10 @@ training_args = Seq2SeqTrainingArguments(
     save_strategy="epoch",
     gradient_accumulation_steps=1,
     predict_with_generate=True,
-    save_total_limit=2,
+    save_total_limit=4,
     do_train=True,
     do_eval=True,
-    logging_steps=10,
+    logging_steps=100,
     num_train_epochs = num_epochs,
     warmup_ratio=1 / num_epochs,
     logging_dir=os.path.join(checkpoint_path, 'log'),
