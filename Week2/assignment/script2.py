@@ -11,11 +11,8 @@ from transformers.utils import PaddingStrategy
 from typing import Optional, Union, Any
 import numpy as np
 from datasets import load_metric
-import torch
 from datasets import load_dataset
-
-from datasets import Dataset
-
+et
 cache_dir = './cache'
 model_name = 'nguyenvulebinh/envibert'
 def download_tokenizer_files():
@@ -59,7 +56,15 @@ def init_model():
     return roberta_shared, tokenizer
 
 def get_dataset():
-    dataset = load_dataset('VietAI/spoken_norm_assignment')
+    train = load_dataset('VietAI/spoken_norm_assignment', split="train[:10%]")
+    val = load_dataset('VietAI/spoken_norm_assignment', split="valid")
+    test = load_dataset('VietAI/spoken_norm_assignment', split="test")
+    train = rename_col(train)
+    val = rename_col(val)
+    test = rename_col(test)
+    return train, val, test
+
+def rename_col(dataset):
     dataset = dataset.rename_column("src", "input_ids")
     dataset = dataset.rename_column("tgt", "labels")
     return dataset
@@ -170,14 +175,14 @@ class DataCollatorForEnViMT:
 model, tokenizer = init_model()
 # print(model)
 
-data = get_dataset()
-print (data)
+train, val, test = get_dataset()
+print (train, val, test)
                     
 # train_set = Dataset.from_dict(flatten(data['train'][0:500000]))
 # val_set = Dataset.from_dict(flatten(data['valid'][0:2500]))
 
-train_set = data['train'].split.map(flatten_list, batched=True)
-val_set = data['valid'].map(flatten_list, batched=True)
+train_set = train.map(flatten_list, batched=True)
+val_set = val.map(flatten_list, batched=True)
 print(train_set, val_set)
 
 # # Metrics
