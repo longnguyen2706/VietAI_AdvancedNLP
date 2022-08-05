@@ -3,8 +3,6 @@ from importlib.machinery import SourceFileLoader
 import os
 from transformers import EncoderDecoderModel, RobertaTokenizer, RobertaForMaskedLM
 
-"""# Prepare data processing function"""
-
 from transformers import Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq, PreTrainedTokenizerBase
 from dataclasses import dataclass
 from transformers.utils import PaddingStrategy
@@ -12,7 +10,19 @@ from typing import Optional, Union, Any
 import numpy as np
 from datasets import load_metric
 from datasets import load_dataset
-et
+import torch
+
+# Model based on pretrained envibert. Trained on 10% of train dataset (taking 20hr++ on RTX 3060)
+# would like to train the whole dataset, but due to complexity, I havent have chance to do that
+#
+# Currently, using the bleu score to train and eval. Since train and eval rows are full sentences,
+# remap those to list of individual words to suit the data collator
+#
+# Implemented the WER score calculation on validation set, but it is too heavy, so still cannot get the score now
+#
+# Trained files checkpoint https://drive.google.com/drive/folders/1fWg3K-v_VjWF5yuW_9ILTUmSYnsn3vSy?usp=sharing
+# Result: https://drive.google.com/drive/folders/1BGYx1MQHMfpP77YF0UWXElqRgpZ_PmjW?usp=sharing
+
 cache_dir = './cache'
 model_name = 'nguyenvulebinh/envibert'
 def download_tokenizer_files():
@@ -172,8 +182,12 @@ class DataCollatorForEnViMT:
 
         return features
 
+
 model, tokenizer = init_model()
 # print(model)
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+print ("device: ", device)
+model.to(device)
 
 train, val, test = get_dataset()
 print (train, val, test)
@@ -181,7 +195,8 @@ print (train, val, test)
 # train_set = Dataset.from_dict(flatten(data['train'][0:500000]))
 # val_set = Dataset.from_dict(flatten(data['valid'][0:2500]))
 
-train_set = train.map(flatten_list, batched=True)
+# train_set = train.map(flatten_list, batched=True)
+train_set= train
 val_set = val.map(flatten_list, batched=True)
 print(train_set, val_set)
 
@@ -235,25 +250,47 @@ trainer = Seq2SeqTrainer(
 
 trainer.train()
 
-# trained_model = model.from_pretrained('./envi_checkpoints/checkpoint-9020')
-#
-# """## Decoding with beam"""
-#
-# # encode context the generation is conditioned on
-# input_ids = tokenizer.encode('I enjoy walking with my girl', return_tensors='pt')
-#
-# # generate text until the output length (which includes the context length) reaches 20
-# beam_outputs = trained_model.generate(
-#     input_ids,
-#     max_length=20,
+trained_model = model.from_pretrained('./envi_checkpoints/checkpoint-634382')
+# beam_outputs = []
+# y_test_labels = []
+# for input in test['input_ids'][0]:
+#     y_test = trained_model.generate(tokenizer.encode(input, return_tensors='pt'), max_length=20,
 #     num_beams=10,
 #     no_repeat_ngram_size=2,
 #     num_return_sequences=5,
-#     early_stopping=True
-# )
+#     early_stopping=True)
+#     beam_outputs.append(y_test)
 #
 # print("Output:\n" + 100 * '-')
 # for i, beam_output in enumerate(beam_outputs):
 #   output_pieces = tokenizer.convert_ids_to_tokens(beam_output.numpy().tolist())
 #   output_text = tokenizer.sp_model.decode(output_pieces)
 #   print("{}: {}".format(i, output_text))
+
+
+# # Metrics
+# wer = load_metric('wer')
+# predictions = [' '.join(item) for item in data['valid']['src']]
+# references = [' '.join(item) for item in data['valid']['tgt']]
+# wer_score = wer.compute(predictions=predictions,
+#             references=references)
+# print("wer score: ", wer_score)
+
+y_val_predict = []
+y_val_label = []
+
+for input in val_set['input_ids']:
+    y_val = trained_model.generate(tokenizer.encode(input, return_tensors='pt'))
+    y_val_predict.append(y_val)
+
+for label in val_set['labels']:
+    y_label = tokenizer.encode(label, return_tensors='pt')
+    y_val_label.append(y_label)
+
+print (y_val_predict, y_val_label)
+
+wer = load_metric('wer')
+wer_score = wer.compute(predictions=y_val_predict,
+            references=y_val_label)
+print("wer score: ", wer_score)
+
